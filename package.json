@@ -5,7 +5,8 @@
   "author": "Ben Kurrek",
   "scripts": {
     "build": "cd contract && ./build.sh",
-    "deploy": "ts-node deploy/main.ts"
+    "deploy": "ts-node deploy/main.ts",
+    "implicit": "ts-node deploy/secpImplicit.ts"
   },
   "dependencies": {
     "@keypom/core": "^1.0.6",

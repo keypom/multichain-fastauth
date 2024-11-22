@@ -10,16 +10,16 @@ async function main() {
   const near = await initNear(config);
   const signerAccount = await near.account(config.signerAccountId);
 
-  // Deploy trial contract
-  const trialContractId = `${Date.now().toString()}-trial-contract.testnet`;
-  console.log(`Deploying trial contract with ID: ${trialContractId}`);
+  const contractId = `${Date.now().toString()}-fastauth.testnet`;
+  console.log(`Deploying contract with ID: ${contractId}`);
   const trialFactoryAccountSecretKey = await deployTrialContract({
     near,
     config,
     signerAccount,
-    contractAccountId: trialContractId,
+    contractAccountId: contractId,
     mpcContractId: config.mpcContractId,
-    wasmFilePath: "./out/trials.wasm", // Adjust the path as needed
+    oracleAccountId: config.oracleAccountId,
+    wasmFilePath: "./out/fastauth.wasm", // Adjust the path as needed
     initialBalance: "50", // Adjust as needed
   });
 
@@ -27,7 +27,7 @@ async function main() {
   const keyStore: any = (near.connection.signer as any).keyStore;
   await keyStore.setKey(
     near.connection.networkId,
-    trialContractId,
+    contractId,
     KeyPair.fromString(trialFactoryAccountSecretKey),
   );
 }

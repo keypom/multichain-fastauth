@@ -13,6 +13,7 @@ interface DeployContractParams {
   signerAccount: Account;
   contractAccountId: string;
   mpcContractId: string;
+  oracleAccountId: string;
   wasmFilePath: string;
   initialBalance: string; // NEAR amount as a string
 }
@@ -32,6 +33,7 @@ export async function deployTrialContract(
     contractAccountId,
     config,
     mpcContractId,
+    oracleAccountId,
     wasmFilePath,
     initialBalance,
   } = params;
@@ -46,7 +48,7 @@ export async function deployTrialContract(
     methodName: "new",
     args: {
       mpc_contract: mpcContractId,
-      admin_account: signerAccount.accountId,
+      oracle_account_id: oracleAccountId,
     },
   });
 }

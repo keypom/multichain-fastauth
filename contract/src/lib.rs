@@ -17,37 +17,33 @@ use omni_transaction::{
 };
 use std::collections::HashMap;
 
+pub mod auth;
 pub mod models;
-pub mod trial_creator;
 pub mod trial_user;
 pub mod utils;
 pub mod views;
 
+pub use auth::*;
 pub use models::*;
-pub use trial_creator::*;
 pub use trial_user::*;
 pub use utils::*;
 
 #[near(contract_state, serializers = [borsh])]
 #[derive(PanicOnDefault)]
 pub struct Contract {
-    pub trial_data_by_id: LookupMap<TrialId, TrialData>,
     pub key_usage_by_pk: LookupMap<PublicKey, KeyUsage>,
-    pub admin_account: AccountId,
+    pub oracle_account_id: AccountId,
     pub mpc_contract: AccountId,
-    pub trial_nonce: TrialId,
 }
 
 #[near]
 impl Contract {
     #[init]
-    pub fn new(admin_account: AccountId, mpc_contract: AccountId) -> Self {
+    pub fn new(oracle_account_id: AccountId, mpc_contract: AccountId) -> Self {
         Self {
-            trial_data_by_id: LookupMap::new(StorageKeys::TrialDataById),
             key_usage_by_pk: LookupMap::new(StorageKeys::KeyUsageByPK),
-            admin_account,
+            oracle_account_id,
             mpc_contract,
-            trial_nonce: 0,
         }
     }
 }

@@ -11,3 +11,4 @@ pub const SECP256K1_PUBLIC_KEY_LENGTH: usize = 64;
 
 /// Type alias for Trial IDs
 pub type TrialId = u32;
+pub type UserId = String;

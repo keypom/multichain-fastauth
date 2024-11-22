@@ -1,16 +1,7 @@
 use near_sdk::json_types::U128;
-use omni_transaction::evm::types::Address;
 
 // models/key_usage.rs
 use crate::*;
-
-#[derive(Clone)]
-#[near(serializers = [json, borsh])]
-#[serde(untagged)]
-pub enum UserAccountId {
-    NEAR(AccountId),
-    EVM(Address),
-}
 
 /// Tracks usage statistics for trial accounts.
 #[derive(Clone)]
@@ -41,16 +32,8 @@ impl Default for UsageStats {
 #[derive(Clone)]
 #[near(serializers = [json, borsh])]
 pub struct KeyUsage {
-    pub trial_id: TrialId,
-    pub mpc_key: PublicKey,
-    pub account_id_by_chain_id: HashMap<ChainId, UserAccountId>,
     pub usage_stats: UsageStats,
-}
 
-/// Structure representing a key with both a public key and MPC key
-#[derive(Clone)]
-#[near(serializers = [json, borsh])]
-pub struct KeyWithMPC {
-    pub public_key: PublicKey,
-    pub mpc_key: PublicKey,
+    // represents hash of google ID
+    pub user_id: UserId,
 }

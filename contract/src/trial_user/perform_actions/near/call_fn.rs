@@ -1,47 +1,52 @@
+use near_sdk::json_types::Base64VecU8;
+
 // usage_tracking/usage_stats.rs
 use crate::*;
+
+/// Represents a sign request sent to the MPC contract.
+#[derive(Clone)]
+#[near(serializers = [json])]
+pub struct NearPayload {
+    signer_id: AccountId,
+    signer_pk: PublicKey,
+    contract_id: AccountId,
+    method_name: String,
+    args: Vec<u8>,
+    gas: Gas,
+    deposit: NearToken,
+    nonce: U64,
+    block_hash: Base58CryptoHash,
+}
 
 #[near]
 impl Contract {
     /// Calls a NEAR contract via the MPC contract.
     pub fn call_near_contract(
         &mut self,
-        contract_id: AccountId,
-        method_name: String,
-        args: Vec<u8>,
-        gas: Gas,
-        deposit: NearToken,
-        nonce: U64,
-        block_hash: Base58CryptoHash,
+        signature: Base64VecU8,
+        payload: NearPayload,
+        public_key: PublicKey,
     ) -> Promise {
-        let action = Action::NEAR(NearAction {
-            method_name: method_name.clone(),
-            contract_id: contract_id.clone(),
-            gas_attached: gas,
-            deposit_attached: deposit,
-        });
+        self.assert_valid_signature(&payload, &signature, &public_key);
 
-        let (trial_data, key_usage) = self.assert_action_allowed(&action);
-        let mpc_key = key_usage.mpc_key;
-        let account_id = match key_usage
-            .account_id_by_chain_id
-            .get(&ChainId("NEAR".to_string()))
-            .expect("Trial Account not activated")
-        {
-            UserAccountId::NEAR(account_id) => account_id.clone(),
-            _ => panic!("No NEAR account found"),
-        };
+        // Check if the public key is associated with a known session key
+        let key_usage = self
+            .key_usage_by_pk
+            .get(&public_key)
+            .expect("Public key not recognized");
+        let user_id = key_usage.user_id.clone();
 
-        // Check exit conditions if any
-        if let Some(exit_conditions) = &trial_data.exit_conditions {
-            // Check transaction limit
-            if let Some(transaction_limit) = exit_conditions.transaction_limit {
-                if key_usage.usage_stats.total_interactions > transaction_limit {
-                    env::panic_str("Transaction limit reached");
-                }
-            }
-            // Additional exit conditions can be checked here
-        }
+        let NearPayload {
+            signer_id,
+            signer_pk,
+            contract_id,
+            method_name,
+            args,
+            gas,
+            deposit,
+            nonce,
+            block_hash,
+        } = payload;
 
         let actions = vec![OmniAction::FunctionCall(Box::new(OmniFunctionCallAction {
             method_name: method_name.clone(),
@@ -52,8 +57,8 @@ impl Contract {
 
         // Build the NEAR transaction
         let tx = TransactionBuilder::new::<NEAR>()
-            .signer_id(account_id.clone().to_string())
-            .signer_public_key(convert_pk_to_omni(&mpc_key))
+            .signer_id(signer_id.clone().to_string())
+            .signer_public_key(convert_pk_to_omni(&signer_pk))
             .nonce(nonce.0) // Use the provided nonce
             .receiver_id(contract_id.clone().to_string())
             .block_hash(OmniBlockHash(block_hash.into()))
@@ -70,8 +75,7 @@ impl Contract {
             contract_id, method_name, hashed_payload
         ));
 
-        let request_payload =
-            create_sign_request_from_transaction(hashed_payload, &env::signer_account_pk());
+        let request_payload = create_sign_request_from_transaction(hashed_payload, &user_id);
 
         // Call the MPC contract to get a signature
         Promise::new(self.mpc_contract.clone())

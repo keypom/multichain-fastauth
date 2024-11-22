@@ -1,125 +1,48 @@
 // trial_user/perform_actions/action_checker.rs
 use crate::*;
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
+use perform_actions::near::call_fn::NearPayload;
+
+pub(crate) fn vec_to_64_byte_array(vec: Vec<u8>) -> Option<[u8; 64]> {
+    // Check if the string is exactly 64 bytes
+    if vec.len() != 64 {
+        return None;
+    }
+
+    // Explicitly import TryInto trait
+    use std::convert::TryInto;
+
+    let array: [u8; 64] = vec
+        .try_into() // Try to convert the Vec<u8> into a fixed-size array
+        .expect("Vec with incorrect length"); // This expect will never panic due to the above length check
+
+    Some(array)
+}
 
 #[near]
 impl Contract {
-    pub(crate) fn assert_action_allowed(&mut self, action: &Action) -> (TrialData, KeyUsage) {
-        let public_key = env::signer_account_pk();
+    pub(crate) fn assert_valid_signature(
+        &self,
+        payload: &NearPayload,
+        signature: &Base64VecU8,
+        public_key: &PublicKey,
+    ) {
+        // Serialize the payload
+        let payload_bytes =
+            near_sdk::serde_json::to_vec(&payload).expect("Failed to serialize payload");
 
-        // Fetch KeyUsage
-        let mut key_usage = self
-            .key_usage_by_pk
-            .get(&public_key)
-            .expect("Access denied")
-            .clone();
+        // Extract the raw key bytes without the curve type prefix
+        let key_bytes_without_prefix = &public_key.as_bytes()[1..];
+        let key_bytes_array: &[u8; 32] = key_bytes_without_prefix
+            .try_into()
+            .expect("Invalid key length");
 
-        // Fetch TrialData
-        let trial_data = self
-            .trial_data_by_id
-            .get(&key_usage.trial_id)
-            .cloned()
-            .expect("Trial data not found");
+        let sig_bytes =
+            vec_to_64_byte_array(signature.clone().into()).expect("Invalid signature length");
 
-        // Check expiration time
-        if trial_data.has_expired(env::block_timestamp()) {
-            env::panic_str("Trial period has expired");
-        }
+        // Verify the signature
+        let is_valid = env::ed25519_verify(&sig_bytes, &payload_bytes, key_bytes_array);
 
-        // Now check action-specific constraints
-        match action {
-            Action::NEAR(near_action) => {
-                let chain_id = ChainId("NEAR".to_string());
-
-                // Check if the method is allowed
-                if !trial_data.is_method_allowed(&near_action.method_name, &chain_id) {
-                    env::panic_str("Method not allowed");
-                }
-
-                // Check if the contract is allowed
-                if !trial_data.is_contract_allowed(near_action.contract_id.as_str(), &chain_id) {
-                    env::panic_str("Contract not allowed");
-                }
-
-                // Check gas limit
-                if !trial_data.is_gas_within_limits(near_action.gas_attached.as_gas(), &chain_id) {
-                    env::panic_str("Attached gas exceeds maximum allowed");
-                }
-
-                // Check deposit limit
-                if !trial_data.is_deposit_within_limits(
-                    near_action.deposit_attached.as_yoctonear(),
-                    &chain_id,
-                ) {
-                    env::panic_str("Attached deposit exceeds maximum allowed");
-                }
-
-                // Update usage statistics
-                key_usage.usage_stats.total_interactions += 1;
-                key_usage.usage_stats.gas_used = key_usage
-                    .usage_stats
-                    .gas_used
-                    .checked_add(near_action.gas_attached.as_gas() as u128)
-                    .expect("Gas overflow");
-
-                key_usage.usage_stats.deposit_used = U128(
-                    key_usage
-                        .usage_stats
-                        .deposit_used
-                        .0
-                        .checked_add(near_action.deposit_attached.as_yoctonear())
-                        .expect("Deposit overflow"),
-                );
-            }
-            Action::EVM(evm_action) => {
-                let chain_id = ChainId(evm_action.chain_id.to_string());
-
-                // Check if the method is allowed
-                if !trial_data.is_method_allowed(&evm_action.method_name, &chain_id) {
-                    env::panic_str("Method not allowed");
-                }
-
-                // Convert contract address to hex string
-                let contract_address_hex =
-                    format!("0x{}", hex::encode(evm_action.contract_address));
-
-                // Check if the contract is allowed
-                if !trial_data.is_contract_allowed(&contract_address_hex, &chain_id) {
-                    env::panic_str("Contract not allowed");
-                }
-
-                // Check gas limit
-                if !trial_data.is_gas_within_limits(evm_action.gas_limit as u64, &chain_id) {
-                    env::panic_str("Gas limit exceeds maximum allowed");
-                }
-
-                // Check value limit
-                if !trial_data.is_deposit_within_limits(evm_action.value.0, &chain_id) {
-                    env::panic_str("Value exceeds maximum allowed");
-                }
-
-                // Update usage statistics
-                key_usage.usage_stats.total_interactions += 1;
-                key_usage.usage_stats.gas_used = key_usage
-                    .usage_stats
-                    .gas_used
-                    .checked_add(evm_action.gas_limit)
-                    .expect("Gas overflow");
-
-                key_usage.usage_stats.deposit_used = U128(
-                    key_usage
-                        .usage_stats
-                        .deposit_used
-                        .0
-                        .checked_add(evm_action.value.0)
-                        .expect("Value overflow"),
-                );
-            }
-        }
-
-        // Update key usage in storage
-        self.key_usage_by_pk.insert(public_key, key_usage.clone());
-
-        (trial_data.clone(), key_usage)
+        require!(is_valid, "Invalid signature");
     }
 }

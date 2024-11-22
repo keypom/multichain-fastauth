@@ -13,4 +13,5 @@ export const config = {
   signerAccountId: "benjiman.testnet",
   keyStore: new UnencryptedFileSystemKeyStore(credentialsPath),
   mpcContractId: "v1.signer-prod.testnet",
+  oracleAccountId: "fastauth-oracle-1.testnet",
 };
