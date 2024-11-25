@@ -10,6 +10,7 @@ pub struct SignRequest {
     pub key_version: u32,
 }
 
+#[derive(Debug)]
 #[near(serializers = [json])]
 pub struct SignResult {
     pub big_r: AffinePoint,
@@ -17,11 +18,13 @@ pub struct SignResult {
     pub recovery_id: u8,
 }
 
+#[derive(Debug)]
 #[near(serializers = [json])]
 pub struct AffinePoint {
     pub affine_point: String,
 }
 
+#[derive(Debug)]
 #[near(serializers = [json])]
 pub struct Scalar {
     pub scalar: String,

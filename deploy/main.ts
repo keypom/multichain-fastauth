@@ -2,15 +2,20 @@
 
 import { deployFastAuthContract } from "./utils/deploy";
 import { callFunction, initNear } from "./utils/nearUtils";
-import { config } from "./config";
+import {
+  config,
+  DEPLOY_CONTRACT,
+  EXISTING_CONTRACT_ID,
+  EXISTING_PATH,
+  SHOULD_ACTIVATE,
+  SHOULD_ADD_SESSION_KEY,
+} from "./config";
 import { KeyPair } from "@near-js/crypto";
 import { parseNearAmount } from "@near-js/utils";
 
-import { ec as EC } from "elliptic";
 import bs58 from "bs58";
 import { ethers } from "ethers";
-
-const ec = new EC("secp256k1");
+import { updateConfigFile } from "./utils/files";
 
 interface NearPayload {
   contract_id: string;
@@ -38,20 +43,34 @@ async function main() {
   const signerAccount = await near.account(config.signerAccountId);
   const oracleAccount = await near.account(config.oracleAccountId);
 
-  const contractId = `${Date.now().toString()}-fastauth.testnet`;
-  console.log(`Deploying contract with ID: ${contractId}`);
-  const trialFactoryAccountSecretKey = await deployFastAuthContract({
-    near,
-    config,
-    signerAccount,
-    contractAccountId: contractId,
-    mpcContractId: config.mpcContractId,
-    oracleAccountId: config.oracleAccountId,
-    wasmFilePath: "./out/fastauth.wasm", // Adjust the path as needed
-    initialBalance: "25", // Adjust as needed
-  });
+  let contractId = EXISTING_CONTRACT_ID;
 
-  const path = Date.now().toString();
+  if (DEPLOY_CONTRACT) {
+    contractId = `${Date.now().toString()}-fastauth.testnet`;
+    console.log(`Deploying contract with ID: ${contractId}`);
+    const trialFactoryAccountSecretKey = await deployFastAuthContract({
+      near,
+      config,
+      signerAccount,
+      contractAccountId: contractId,
+      mpcContractId: config.mpcContractId,
+      oracleAccountId: config.oracleAccountId,
+      wasmFilePath: "./out/fastauth.wasm", // Adjust the path as needed
+      initialBalance: "25", // Adjust as needed
+    });
+
+    // Set the trial key in the keyStore
+    const keyStore: any = (near.connection.signer as any).keyStore;
+    await keyStore.setKey(
+      near.connection.networkId,
+      contractId,
+      KeyPair.fromString(trialFactoryAccountSecretKey),
+    );
+
+    updateConfigFile(contractId);
+  }
+
+  const path = EXISTING_PATH;
   const mpcKey = await oracleAccount.viewFunction({
     contractId: config.mpcContractId,
     methodName: "derived_public_key",
@@ -89,46 +108,53 @@ async function main() {
 
   const ethImplicitAccountId = deriveEthAddressFromMpcKey(mpcKey);
   console.log("Eth Implicit Account ID:", ethImplicitAccountId);
-  let exists = await doesExist(near, ethImplicitAccountId);
-  if (exists) {
-    throw new Error(`Account ${ethImplicitAccountId} already exists.`);
-  }
+
+  // Step 2 add session key
+  const sessionKeyPair = KeyPair.fromString(
+    "ed25519:2vQcYHvPqBrzTnAyeWVConoYVRR25dwj2UNqPXkWrU88L47B1FoWZaXXwWtr7hBFBge5pFwTdYzjtrUN8pTKpsxY",
+  );
+  const publicKey = sessionKeyPair.getPublicKey();
 
   // Assume oAuth is verified already.
   // Step 1 is to activate the account and get the user ID
-  await callFunction({
-    signerAccount: oracleAccount,
-    contractId,
-    methodName: "activate_account",
-    args: {
-      mpc_key: mpcKey,
-      eth_address: ethImplicitAccountId,
-      path,
-    },
-    gas: BigInt("300000000000000"),
-    attachedDeposit: BigInt(parseNearAmount("0.1")!),
-  });
+  if (SHOULD_ACTIVATE) {
+    let exists = await doesExist(near, ethImplicitAccountId);
+    if (exists) {
+      throw new Error(`Account ${ethImplicitAccountId} already exists.`);
+    }
 
-  exists = await doesExist(near, ethImplicitAccountId);
+    await callFunction({
+      signerAccount: oracleAccount,
+      contractId,
+      methodName: "activate_account",
+      args: {
+        mpc_key: mpcKey,
+        eth_address: ethImplicitAccountId,
+        path,
+      },
+      gas: BigInt("300000000000000"),
+      attachedDeposit: BigInt(parseNearAmount("0.1")!),
+    });
+  }
+
+  if (SHOULD_ADD_SESSION_KEY) {
+    await callFunction({
+      signerAccount: oracleAccount,
+      contractId,
+      methodName: "add_session_key",
+      args: {
+        path,
+        public_key: publicKey.toString(),
+      },
+      gas: BigInt("300000000000000"),
+      attachedDeposit: BigInt(parseNearAmount("0.1")!),
+    });
+  }
+
+  const exists = await doesExist(near, ethImplicitAccountId);
   if (!exists) {
     throw new Error(`Account ${ethImplicitAccountId} does not exist`);
   }
-
-  // Step 2 add session key
-  const sessionKeyPair = KeyPair.fromRandom("ed25519");
-  const publicKey = sessionKeyPair.getPublicKey();
-
-  await callFunction({
-    signerAccount: oracleAccount,
-    contractId,
-    methodName: "add_session_key",
-    args: {
-      path,
-      public_key: publicKey.toString(),
-    },
-    gas: BigInt("300000000000000"),
-    attachedDeposit: BigInt(parseNearAmount("0.1")!),
-  });
 
   // Step 3 is to request a signature
   const actionToPerform = {
@@ -180,14 +206,6 @@ async function main() {
     gas: BigInt("300000000000000"),
     attachedDeposit: BigInt(0),
   });
-
-  // Set the trial key in the keyStore
-  const keyStore: any = (near.connection.signer as any).keyStore;
-  await keyStore.setKey(
-    near.connection.networkId,
-    contractId,
-    KeyPair.fromString(trialFactoryAccountSecretKey),
-  );
 }
 
 main().catch((error) => {

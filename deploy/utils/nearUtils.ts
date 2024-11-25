@@ -14,7 +14,7 @@ import { Near } from "@near-js/wallet-account";
 async function retryAsync<T>(
   fn: () => Promise<T>,
   retries: number = 5,
-  delay: number = 5000,
+  delay: number = 10000,
   factor: number = 1,
 ): Promise<T> {
   let attempt = 0;
@@ -50,7 +50,7 @@ async function retryAsync<T>(
 export async function initNear(config: any): Promise<Near> {
   const nearConfig = {
     networkId: config.networkId,
-    nodeUrl: `https://rpc.${config.networkId}.near.org`,
+    nodeUrl: `https://g.w.lavanet.xyz:443/gateway/neart/rpc-http/f653c33afd2ea30614f69bc1c73d4940`,
     keyStore: config.keyStore,
   };
   const near = new Near(nearConfig);

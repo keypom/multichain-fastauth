@@ -62,16 +62,18 @@ impl Contract {
         let input_data =
             Self::encode_function_call(&contract_id, &method_name, &args, gas.as_gas(), yocto_near);
 
-        // Use the stored EVM address from the bundle
-        let wallet_account_id = bundle.eth_address.clone();
-        let wallet_contract_address = Self::account_id_to_eth_address(&wallet_account_id);
+        // Compute the Ethereum address of the target contract
+        let contract_address = Self::account_id_to_eth_address(&contract_id);
+
+        // **Convert NEAR gas to EVM gas**
+        let evm_gas_limit = Self::near_gas_to_evm_gas(gas.as_gas());
 
         // Build the EVM transaction
         let evm_transaction = Self::build_evm_transaction(
             NEAR_EVM_CHAIN_ID,
             nonce.0,
-            gas.as_gas(),
-            wallet_contract_address,
+            evm_gas_limit, // **Use EVM gas units**
+            contract_address,
             value_in_wei,
             input_data.clone(),
         );
@@ -106,7 +108,7 @@ impl Contract {
                 // Set a callback to handle the signature
                 Self::ext(env::current_account_id())
                     .with_static_gas(Gas::from_tgas(200))
-                    .on_sign_evm_txn(evm_transaction, wallet_account_id, contract_id),
+                    .on_sign_evm_txn(evm_transaction, bundle.eth_address, contract_id),
             )
     }
 
@@ -201,19 +203,74 @@ impl Contract {
             .build()
     }
 
+    const GAS_MULTIPLIER: u64 = 100_000_000;
+
+    /// Converts NEAR gas units to EVM gas units by dividing by GAS_MULTIPLIER
+    fn near_gas_to_evm_gas(near_gas: u64) -> u64 {
+        // Round up to ensure sufficient gas
+        (near_gas + Self::GAS_MULTIPLIER - 1) / Self::GAS_MULTIPLIER
+    }
+
     /// Callback function to handle the signature from the MPC contract
     #[private]
     pub fn on_sign_evm_txn(
         &mut self,
-        #[callback_result] call_result: Result<OmniSignature, PromiseError>,
+        #[callback_result] call_result: Result<SignResult, PromiseError>,
         evm_transaction: EVMTransaction,
         wallet_account_id: AccountId,
         target_contract_id: AccountId,
     ) -> Promise {
         match call_result {
             Ok(signature) => {
+                env::log_str(&format!(
+                    "Signature received from MPC contract: {:?}",
+                    signature
+                ));
+
+                // Extract r
+                let affine_point_hex = &signature.big_r.affine_point;
+
+                // Decode the hex string to bytes
+                let compressed_point_bytes = hex::decode(affine_point_hex)
+                    .expect("Failed to decode affine_point hex string");
+
+                if compressed_point_bytes.len() != 33 {
+                    env::panic_str(&format!(
+                        "Invalid compressed point length. Found: {}",
+                        compressed_point_bytes.len()
+                    ));
+                }
+
+                // Remove the first byte (prefix)
+                let r_bytes = compressed_point_bytes[1..].to_vec();
+
+                if r_bytes.len() != 32 {
+                    env::panic_str(&format!(
+                        "Invalid r length after removing prefix. Found: {}",
+                        r_bytes.len()
+                    ));
+                }
+
+                // Extract s
+                let s_bytes =
+                    hex::decode(&signature.s.scalar).expect("Failed to decode s scalar hex string");
+
+                if s_bytes.len() != 32 {
+                    env::panic_str(&format!("Invalid s length. Found: {}", s_bytes.len()));
+                }
+
+                // Extract v
+                let v = signature.recovery_id as u64;
+
+                // Construct OmniSignature
+                let omni_signature = OmniSignature {
+                    v,
+                    r: r_bytes,
+                    s: s_bytes,
+                };
+
                 // Construct the signed EVM transaction
-                let signed_tx_bytes = evm_transaction.build_with_signature(&signature);
+                let signed_tx_bytes = evm_transaction.build_with_signature(&omni_signature);
 
                 // Convert the signed transaction to base64 string
                 let tx_bytes_b64 = base64::encode(signed_tx_bytes);

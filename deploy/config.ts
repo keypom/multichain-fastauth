@@ -8,6 +8,13 @@ const homedir = os.homedir();
 const CREDENTIALS_DIR = ".near-credentials";
 const credentialsPath = path.join(homedir, CREDENTIALS_DIR);
 
+export const DEPLOY_CONTRACT = true;
+export const SHOULD_ACTIVATE = true;
+export const SHOULD_ADD_SESSION_KEY = true;
+
+export const EXISTING_PATH = "12345";
+export const EXISTING_CONTRACT_ID = "1732572152722-fastauth.testnet";
+
 export const config = {
   networkId: "testnet",
   signerAccountId: "benjiman.testnet",
