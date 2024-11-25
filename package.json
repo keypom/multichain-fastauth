@@ -28,6 +28,7 @@
     "bs58check": "^4.0.0",
     "elliptic": "^6.6.1",
     "ethers": "^6.13.4",
+    "keccak256": "^1.0.6",
     "near-cli": "^3.4.2",
     "react": "^18.2.0",
     "react-dom": "18.2.0",

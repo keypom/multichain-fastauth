@@ -4,7 +4,7 @@ use crate::*;
 #[near]
 impl Contract {
     #[payable]
-    pub fn activate_account(&mut self, mpc_key: PublicKey, path: String) {
+    pub fn activate_account(&mut self, mpc_key: PublicKey, eth_address: AccountId, path: String) {
         require!(
             env::predecessor_account_id() == self.oracle_account_id,
             "Only admin can add session keys"
@@ -14,19 +14,21 @@ impl Contract {
 
         let bundle = Bundle {
             mpc_key: mpc_key.clone(),
+            eth_address: eth_address.clone(), // Store the EVM address
             path: path.clone(),
         };
         require!(
-            self.bundler.insert(path, bundle).is_none(),
+            self.bundler.insert(path.clone(), bundle).is_none(),
             "User already activated"
         );
 
-        let eth_implicit_account = Self::derive_wallet_account_id(&mpc_key);
+        // Use the passed-in EVM address
+        let eth_implicit_account = eth_address.clone();
 
         // Activate the new sub-account
         Promise::new(eth_implicit_account.clone()).transfer(NearToken::from_millinear(100)); // Attach 0.1 NEAR for account creation
 
-        self.key_usage_by_pk.flush();
+        self.bundler.flush();
         // Adjust the deposit based on storage usage
         self.adjust_deposit(initial_storage, env::storage_usage());
     }

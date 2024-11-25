@@ -309,6 +309,7 @@ dependencies = [
  "omni-transaction",
  "serde_json",
  "sha2",
+ "sha3",
 ]
 
 [[package]]

@@ -3,12 +3,14 @@ use base64;
 use env::keccak256;
 use ethabi::{Address, Function, Param, ParamType, StateMutability, Token};
 use ethereum_types::U256;
+use hex;
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::{CurveType, PromiseError};
 use omni_transaction::evm::evm_transaction::EVMTransaction;
 use omni_transaction::evm::evm_transaction_builder::EVMTransactionBuilder;
 use omni_transaction::evm::types::Signature as OmniSignature;
 use omni_transaction::transaction_builder::TxBuilder;
+use sha3::{Digest, Keccak256};
 use std::convert::TryInto;
 
 #[derive(Clone)]
@@ -24,7 +26,6 @@ pub struct NearPayload {
 
 #[near]
 impl Contract {
-    /// Calls a NEAR contract via the MPC contract, encoding the NEAR action into an EVM transaction.
     pub fn call_near_contract(
         &mut self,
         signature: Base64VecU8,
@@ -61,8 +62,8 @@ impl Contract {
         let input_data =
             Self::encode_function_call(&contract_id, &method_name, &args, gas.as_gas(), yocto_near);
 
-        // Derive the wallet account ID and Ethereum addresses
-        let wallet_account_id = Self::derive_wallet_account_id(&bundle.mpc_key);
+        // Use the stored EVM address from the bundle
+        let wallet_account_id = bundle.eth_address.clone();
         let wallet_contract_address = Self::account_id_to_eth_address(&wallet_account_id);
 
         // Build the EVM transaction
@@ -168,31 +169,6 @@ impl Contract {
                 Token::Uint(U256::from(yocto_near)),
             ])
             .expect("Failed to encode input")
-    }
-
-    pub fn derive_wallet_account_id(mpc_key: &PublicKey) -> AccountId {
-        // Determine the curve type
-        match mpc_key.curve_type() {
-            CurveType::ED25519 => panic!("Expected secp256k1 key"),
-            CurveType::SECP256K1 => {
-                // Extract the key data (excluding the first byte which indicates the curve type)
-                let key_data = &mpc_key.as_bytes()[1..];
-                // Now, key_data should be the uncompressed 64-byte public key
-
-                // Prefix with 0x04 to make it a 65-byte uncompressed public key
-                let mut uncompressed_pubkey = Vec::with_capacity(65);
-                uncompressed_pubkey.push(0x04);
-                uncompressed_pubkey.extend_from_slice(key_data);
-
-                // Compute the keccak256 hash of the uncompressed public key
-                let hash = keccak256(&uncompressed_pubkey);
-                // Take the last 20 bytes as the Ethereum address
-                let address_bytes = &hash[12..];
-                let address_hex = hex::encode(address_bytes);
-                let account_id = format!("0x{}", address_hex);
-                account_id.parse().expect("Invalid account ID")
-            }
-        }
     }
 
     /// Helper function to compute Ethereum address from account ID

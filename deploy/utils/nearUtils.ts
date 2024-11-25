@@ -14,8 +14,8 @@ import { Near } from "@near-js/wallet-account";
 async function retryAsync<T>(
   fn: () => Promise<T>,
   retries: number = 5,
-  delay: number = 1000,
-  factor: number = 2,
+  delay: number = 5000,
+  factor: number = 1,
 ): Promise<T> {
   let attempt = 0;
   let currentDelay = delay;
@@ -82,7 +82,7 @@ export async function callFunction({
     });
     const txnHash = res.transaction.hash;
     console.log(
-      `Transaction successful: https://testnet.nearblocks.io/txns/${txnHash}#execution`,
+      `${methodName}: https://testnet.nearblocks.io/txns/${txnHash}#execution`,
     );
     return res;
   };
@@ -92,7 +92,7 @@ export async function callFunction({
   } catch (e) {
     console.error(e);
     console.error(
-      `Transaction failed: https://testnet.nearblocks.io/address/${contractId}`,
+      `${methodName} failed: https://testnet.nearblocks.io/address/${contractId}`,
     );
     throw new Error("Transaction failed");
   }

@@ -6,6 +6,12 @@ import { config } from "./config";
 import { KeyPair } from "@near-js/crypto";
 import { parseNearAmount } from "@near-js/utils";
 
+import { ec as EC } from "elliptic";
+import bs58 from "bs58";
+import { ethers } from "ethers";
+
+const ec = new EC("secp256k1");
+
 interface NearPayload {
   contract_id: string;
   method_name: string;
@@ -14,6 +20,17 @@ interface NearPayload {
   deposit: string;
   nonce: string;
 }
+
+const doesExist = async (near: any, accountId: string) => {
+  try {
+    const account = await near.account(accountId);
+    const state = await account.state();
+    console.log("Account state:", state);
+    return true;
+  } catch (error: any) {
+    return false;
+  }
+};
 
 async function main() {
   // Initialize NEAR connection
@@ -31,7 +48,7 @@ async function main() {
     mpcContractId: config.mpcContractId,
     oracleAccountId: config.oracleAccountId,
     wasmFilePath: "./out/fastauth.wasm", // Adjust the path as needed
-    initialBalance: "50", // Adjust as needed
+    initialBalance: "25", // Adjust as needed
   });
 
   const path = Date.now().toString();
@@ -45,6 +62,38 @@ async function main() {
   });
   console.log("MPC key: ", mpcKey);
 
+  function deriveEthAddressFromMpcKey(mpcKey: string): string {
+    // Remove the curve type prefix
+    const [curveType, keyDataBase58] = mpcKey.split(":");
+    if (curveType !== "secp256k1") {
+      throw new Error("Expected secp256k1 key");
+    }
+    const keyData = bs58.decode(keyDataBase58); // Key data
+    console.log("Key data length:", keyData.length);
+    console.log("Key data (hex):", Buffer.from(keyData).toString("hex"));
+
+    if (keyData.length === 64) {
+      // Uncompressed public key without prefix byte
+      // Add the '04' prefix to indicate uncompressed key
+      const uncompressedPublicKeyHex =
+        "04" + Buffer.from(keyData).toString("hex");
+      // Compute the Ethereum address using ethers.js
+      const ethAddress = ethers.computeAddress("0x" + uncompressedPublicKeyHex);
+      return ethAddress.toLowerCase();
+    } else {
+      throw new Error(
+        "Unsupported public key format. Expected 64 bytes of key data.",
+      );
+    }
+  }
+
+  const ethImplicitAccountId = deriveEthAddressFromMpcKey(mpcKey);
+  console.log("Eth Implicit Account ID:", ethImplicitAccountId);
+  let exists = await doesExist(near, ethImplicitAccountId);
+  if (exists) {
+    throw new Error(`Account ${ethImplicitAccountId} already exists.`);
+  }
+
   // Assume oAuth is verified already.
   // Step 1 is to activate the account and get the user ID
   await callFunction({
@@ -53,11 +102,17 @@ async function main() {
     methodName: "activate_account",
     args: {
       mpc_key: mpcKey,
+      eth_address: ethImplicitAccountId,
       path,
     },
     gas: BigInt("300000000000000"),
     attachedDeposit: BigInt(parseNearAmount("0.1")!),
   });
+
+  exists = await doesExist(near, ethImplicitAccountId);
+  if (!exists) {
+    throw new Error(`Account ${ethImplicitAccountId} does not exist`);
+  }
 
   // Step 2 add session key
   const sessionKeyPair = KeyPair.fromRandom("ed25519");
@@ -90,19 +145,19 @@ async function main() {
   const argsArray = Array.from(argsBytes);
 
   const nonce = await oracleAccount.viewFunction({
-    contractId: "ETH ACCOUNT HERE"  
+    contractId: ethImplicitAccountId,
     methodName: "get_nonce",
-    args: {
-    },
+    args: {},
   });
- 
+  console.log("Nonce: ", nonce);
+
   const nearPayload: NearPayload = {
     contract_id: actionToPerform.targetContractId,
     method_name: actionToPerform.methodName,
     args: argsArray,
     gas: actionToPerform.gas,
     deposit: parseNearAmount(actionToPerform.attachedDepositNear)!,
-    nonce: "0", // Set to 0 or an appropriate nonce
+    nonce,
   };
 
   const payloadJson = JSON.stringify(nearPayload);
