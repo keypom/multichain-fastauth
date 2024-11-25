@@ -4,7 +4,7 @@ use crate::*;
 #[near]
 impl Contract {
     #[payable]
-    pub fn add_session_key(&mut self, pub_key: PublicKey, user_id: UserId) {
+    pub fn add_session_key(&mut self, public_key: PublicKey, path: MpcPath) {
         require!(
             env::predecessor_account_id() == self.oracle_account_id,
             "Only admin can add session keys"
@@ -13,13 +13,13 @@ impl Contract {
         let initial_storage = env::storage_usage();
 
         let key_usage = KeyUsage {
-            user_id: user_id.clone(),
+            path,
             usage_stats: UsageStats::default(),
         };
 
         require!(
             self.key_usage_by_pk
-                .insert(pub_key.clone(), key_usage)
+                .insert(public_key.clone(), key_usage)
                 .is_none(),
             "Key already exists"
         );

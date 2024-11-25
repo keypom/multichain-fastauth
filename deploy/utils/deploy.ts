@@ -15,16 +15,10 @@ interface DeployContractParams {
   mpcContractId: string;
   oracleAccountId: string;
   wasmFilePath: string;
-  initialBalance: string; // NEAR amount as a string
+  initialBalance: string;
 }
 
-/**
- * Deploys the trial contract by creating a new account and deploying the contract code.
- *
- * @param params - The parameters required to deploy the contract.
- * @returns A Promise that resolves when the deployment is complete.
- */
-export async function deployTrialContract(
+export async function deployFastAuthContract(
   params: DeployContractParams,
 ): Promise<KeyPairString> {
   const {

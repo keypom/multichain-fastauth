@@ -25,14 +25,14 @@ impl Contract {
         &self,
         payload: &NearPayload,
         signature: &Base64VecU8,
-        public_key: &PublicKey,
+        session_key: &PublicKey,
     ) {
         // Serialize the payload
         let payload_bytes =
             near_sdk::serde_json::to_vec(&payload).expect("Failed to serialize payload");
 
         // Extract the raw key bytes without the curve type prefix
-        let key_bytes_without_prefix = &public_key.as_bytes()[1..];
+        let key_bytes_without_prefix = &session_key.as_bytes()[1..];
         let key_bytes_array: &[u8; 32] = key_bytes_without_prefix
             .try_into()
             .expect("Invalid key length");

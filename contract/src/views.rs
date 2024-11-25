@@ -6,4 +6,9 @@ impl Contract {
     pub fn get_key_usage(&self, public_key: PublicKey) -> Option<KeyUsage> {
         self.key_usage_by_pk.get(&public_key).cloned()
     }
+
+    /// View function to get a user's bundle
+    pub fn get_bundle(&self, path: MpcPath) -> Option<Bundle> {
+        self.bundler.get(&path).cloned()
+    }
 }

@@ -31,7 +31,11 @@ pub use utils::*;
 #[near(contract_state, serializers = [borsh])]
 #[derive(PanicOnDefault)]
 pub struct Contract {
+    // session key -> key usage
     pub key_usage_by_pk: LookupMap<PublicKey, KeyUsage>,
+    // mpc path -> bundle
+    pub bundler: LookupMap<MpcPath, Bundle>,
+
     pub oracle_account_id: AccountId,
     pub mpc_contract: AccountId,
 }
@@ -42,6 +46,7 @@ impl Contract {
     pub fn new(oracle_account_id: AccountId, mpc_contract: AccountId) -> Self {
         Self {
             key_usage_by_pk: LookupMap::new(StorageKeys::KeyUsageByPK),
+            bundler: LookupMap::new(StorageKeys::Bundler),
             oracle_account_id,
             mpc_contract,
         }

@@ -9,6 +9,10 @@ pub const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
 /// Length of a SECP256K1 public key
 pub const SECP256K1_PUBLIC_KEY_LENGTH: usize = 64;
 
+/// Chain ID for NEAR on testnet
+pub const NEAR_EVM_CHAIN_ID: u64 = 398;
+
 /// Type alias for Trial IDs
 pub type TrialId = u32;
-pub type UserId = String;
+pub type UserId = u32;
+pub type MpcPath = String;

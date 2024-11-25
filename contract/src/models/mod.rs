@@ -1,5 +1,6 @@
 // models/mod.rs
 pub mod action;
+pub mod bundle;
 pub mod chain_constraints;
 pub mod chain_id;
 pub mod constants;
@@ -10,6 +11,7 @@ pub mod trial_data;
 pub mod usage_constraints;
 
 pub use action::*;
+pub use bundle::*;
 pub use chain_constraints::*;
 pub use chain_id::*;
 pub use constants::*;

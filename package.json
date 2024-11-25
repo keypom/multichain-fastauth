@@ -5,7 +5,7 @@
   "author": "Ben Kurrek",
   "scripts": {
     "build": "cd contract && ./build.sh",
-    "deploy": "ts-node deploy/main.ts",
+    "deploy": "yarn build && ts-node deploy/main.ts",
     "implicit": "ts-node deploy/secpImplicit.ts"
   },
   "dependencies": {
@@ -27,9 +27,11 @@
     "bs58": "^6.0.0",
     "bs58check": "^4.0.0",
     "elliptic": "^6.6.1",
+    "ethers": "^6.13.4",
     "near-cli": "^3.4.2",
     "react": "^18.2.0",
     "react-dom": "18.2.0",
+    "rlp": "^3.0.0",
     "ts-node": "^10.8.0",
     "tweetnacl-util": "^0.15.1",
     "typedoc": "^0.23.24",

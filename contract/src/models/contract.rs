@@ -6,6 +6,5 @@ use crate::*;
 pub enum StorageKeys {
     TrialDataById,
     KeyUsageByPK,
-    BundleById,
     Bundler,
 }

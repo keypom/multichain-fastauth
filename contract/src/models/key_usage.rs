@@ -34,6 +34,5 @@ impl Default for UsageStats {
 pub struct KeyUsage {
     pub usage_stats: UsageStats,
 
-    // represents hash of google ID
-    pub user_id: UserId,
+    pub path: MpcPath,
 }
