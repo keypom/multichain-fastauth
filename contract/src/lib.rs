@@ -17,12 +17,14 @@ use omni_transaction::{
 };
 use std::collections::HashMap;
 
+pub mod app_balances;
 pub mod auth;
 pub mod models;
 pub mod trial_user;
 pub mod utils;
 pub mod views;
 
+pub use app_balances::*;
 pub use auth::*;
 pub use models::*;
 pub use trial_user::*;
@@ -31,11 +33,15 @@ pub use utils::*;
 #[near(contract_state, serializers = [borsh])]
 #[derive(PanicOnDefault)]
 pub struct Contract {
-    // session key -> key usage
+    // Keys
+    pub session_keys: LookupMap<(MpcPath, AppID), PublicKey>,
     pub key_usage_by_pk: LookupMap<PublicKey, KeyUsage>,
-    // mpc path -> bundle
     pub bundler: LookupMap<MpcPath, Bundle>,
 
+    // Apps
+    pub app_balances: LookupMap<AppID, NearToken>,
+
+    // Admin
     pub oracle_account_id: AccountId,
     pub mpc_contract: AccountId,
 }
@@ -45,8 +51,10 @@ impl Contract {
     #[init]
     pub fn new(oracle_account_id: AccountId, mpc_contract: AccountId) -> Self {
         Self {
+            session_keys: LookupMap::new(StorageKeys::SessionKeys),
             key_usage_by_pk: LookupMap::new(StorageKeys::KeyUsageByPK),
             bundler: LookupMap::new(StorageKeys::Bundler),
+            app_balances: LookupMap::new(StorageKeys::AppBalances),
             oracle_account_id,
             mpc_contract,
         }

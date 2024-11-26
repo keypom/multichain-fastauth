@@ -34,5 +34,6 @@ impl Default for UsageStats {
 pub struct KeyUsage {
     pub usage_stats: UsageStats,
 
+    pub app_id: AppID, // Application identifier
     pub path: MpcPath,
 }

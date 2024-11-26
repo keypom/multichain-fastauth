@@ -16,3 +16,4 @@ pub const NEAR_EVM_CHAIN_ID: u64 = 398;
 pub type TrialId = u32;
 pub type UserId = u32;
 pub type MpcPath = String;
+pub type AppID = String; // Can be a hash of the origin

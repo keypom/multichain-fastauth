@@ -6,7 +6,7 @@
   "scripts": {
     "build": "cd contract && ./build.sh",
     "deploy": "yarn build && ts-node deploy/main.ts",
-    "implicit": "ts-node deploy/secpImplicit.ts"
+    "ping": "ts-node deploy/ping.ts"
   },
   "dependencies": {
     "@keypom/core": "^1.0.6",

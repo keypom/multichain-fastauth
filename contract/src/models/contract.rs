@@ -4,6 +4,8 @@ use crate::*;
 #[near]
 #[derive(BorshStorageKey)]
 pub enum StorageKeys {
+    AppBalances,
+    SessionKeys,
     TrialDataById,
     KeyUsageByPK,
     Bundler,

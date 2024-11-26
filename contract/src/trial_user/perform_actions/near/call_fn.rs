@@ -15,24 +15,38 @@ use std::convert::TryInto;
 
 #[derive(Clone)]
 #[near(serializers = [json])]
+pub enum NearAction {
+    FunctionCall {
+        contract_id: AccountId,
+        method_name: String,
+        args: Vec<u8>,
+        gas: Gas,
+        deposit: NearToken,
+    },
+    Transfer {
+        receiver_id: AccountId,
+        amount: NearToken,
+    },
+}
+
+#[derive(Clone)]
+#[near(serializers = [json])]
 pub struct NearPayload {
-    contract_id: AccountId,
-    method_name: String,
-    args: Vec<u8>,
-    gas: Gas,
-    deposit: NearToken,
+    action: NearAction,
     nonce: U64,
 }
 
 #[near]
 impl Contract {
-    pub fn call_near_contract(
+    #[payable]
+    pub fn execute_near_action(
         &mut self,
         signature: Base64VecU8,
         payload: NearPayload,
         session_key: PublicKey,
+        app_id: AppID,
     ) -> Promise {
-        self.assert_valid_signature(&payload, &signature, &session_key);
+        self.assert_valid_signature(&payload, &signature, &session_key, &app_id);
 
         // Retrieve user and bundler info
         let key_usage = self
@@ -46,33 +60,94 @@ impl Contract {
             .expect("User not found")
             .clone();
 
-        let NearPayload {
-            contract_id,
-            method_name,
-            args,
-            gas,
-            deposit,
-            nonce,
-        } = payload;
+        let NearPayload { action, nonce } = payload;
 
-        // Compute value_in_wei and yocto_near
-        let (value_in_wei, yocto_near) = Self::convert_deposit(deposit);
+        // Variables for EVM transaction building
+        let (
+            contract_address,
+            input_data,
+            value_in_wei,
+            evm_gas_limit,
+            attached_deposit,
+            target_account_id,
+        ) = match action.clone() {
+            NearAction::FunctionCall {
+                contract_id,
+                method_name,
+                args,
+                gas,
+                deposit,
+            } => {
+                // Debit for the attached deposit to the function call
+                if !deposit.is_zero() {
+                    self.debit(deposit, app_id);
+                }
 
-        // Build the NEAR action parameters
-        let input_data =
-            Self::encode_function_call(&contract_id, &method_name, &args, gas.as_gas(), yocto_near);
+                // Compute value_in_wei and yocto_near
+                let (value_in_wei, yocto_near) = Self::convert_deposit(deposit);
 
-        // Compute the Ethereum address of the target contract
-        let contract_address = Self::account_id_to_eth_address(&contract_id);
+                // Encode input data
+                let input_data = Self::encode_function_call(
+                    &contract_id,
+                    &method_name,
+                    &args,
+                    gas.as_gas(),
+                    yocto_near,
+                );
 
-        // **Convert NEAR gas to EVM gas**
-        let evm_gas_limit = Self::near_gas_to_evm_gas(gas.as_gas());
+                // Compute contract address
+                let contract_address = Self::account_id_to_eth_address(&contract_id);
+
+                // Convert NEAR gas to EVM gas
+                let evm_gas_limit = Self::near_gas_to_evm_gas(gas.as_gas());
+
+                (
+                    contract_address,
+                    input_data,
+                    value_in_wei,
+                    evm_gas_limit,
+                    deposit,
+                    contract_id.clone(), // target_account_id
+                )
+            }
+            NearAction::Transfer {
+                receiver_id,
+                amount,
+            } => {
+                // Debit for the attached deposit to the transfer
+                if !amount.is_zero() {
+                    self.debit(amount, app_id);
+                }
+
+                // Compute value_in_wei and yocto_near
+                let (value_in_wei, yocto_near) = Self::convert_deposit(amount);
+
+                // Encode input data
+                let input_data = Self::encode_transfer(&receiver_id, yocto_near);
+
+                // Compute contract address
+                let contract_address = Self::account_id_to_eth_address(&receiver_id);
+
+                // Use default gas for transfer
+                let gas = Gas::from_tgas(5); // Adjust as needed
+                let evm_gas_limit = Self::near_gas_to_evm_gas(gas.as_gas());
+
+                (
+                    contract_address,
+                    input_data,
+                    value_in_wei,
+                    evm_gas_limit,
+                    amount,
+                    receiver_id.clone(), // target_account_id
+                )
+            }
+        };
 
         // Build the EVM transaction
         let evm_transaction = Self::build_evm_transaction(
             NEAR_EVM_CHAIN_ID,
             nonce.0,
-            evm_gas_limit, // **Use EVM gas units**
+            evm_gas_limit,
             contract_address,
             value_in_wei,
             input_data.clone(),
@@ -85,14 +160,6 @@ impl Contract {
         let hashed_payload: [u8; 32] = hashed_payload_vec
             .try_into()
             .expect("Hash output should be 32 bytes");
-
-        // Log the details
-        env::log_str(&format!(
-            "Calling NEAR contract {:?} with method {:?} via EVM txn. Hash: {:?}",
-            contract_id,
-            method_name,
-            hex::encode(hashed_payload)
-        ));
 
         let request_payload = create_sign_request_from_transaction(hashed_payload, &bundle.path);
 
@@ -107,8 +174,13 @@ impl Contract {
             .then(
                 // Set a callback to handle the signature
                 Self::ext(env::current_account_id())
-                    .with_static_gas(Gas::from_tgas(200))
-                    .on_sign_evm_txn(evm_transaction, bundle.eth_address, contract_id),
+                    .with_static_gas(Gas::from_tgas(230))
+                    .on_sign_evm_txn(
+                        evm_transaction,
+                        bundle.eth_address,
+                        target_account_id,
+                        attached_deposit,
+                    ),
             )
     }
 
@@ -173,6 +245,35 @@ impl Contract {
             .expect("Failed to encode input")
     }
 
+    /// Helper function to encode the transfer input data
+    fn encode_transfer(receiver_id: &AccountId, yocto_near: u32) -> Vec<u8> {
+        let function = Function {
+            name: "transfer".to_string(),
+            inputs: vec![
+                Param {
+                    name: "receiver_id".to_string(),
+                    kind: ParamType::String,
+                    internal_type: None,
+                },
+                Param {
+                    name: "yocto_near".to_string(),
+                    kind: ParamType::Uint(32),
+                    internal_type: None,
+                },
+            ],
+            outputs: vec![],
+            constant: None,
+            state_mutability: StateMutability::NonPayable,
+        };
+
+        function
+            .encode_input(&[
+                Token::String(receiver_id.clone().to_string()),
+                Token::Uint(U256::from(yocto_near)),
+            ])
+            .expect("Failed to encode input")
+    }
+
     /// Helper function to compute Ethereum address from account ID
     fn account_id_to_eth_address(account_id: &AccountId) -> Address {
         let hash = keccak256(account_id.as_bytes());
@@ -218,7 +319,8 @@ impl Contract {
         #[callback_result] call_result: Result<SignResult, PromiseError>,
         evm_transaction: EVMTransaction,
         wallet_account_id: AccountId,
-        target_contract_id: AccountId,
+        target_account_id: AccountId,
+        deposit: NearToken,
     ) -> Promise {
         match call_result {
             Ok(signature) => {
@@ -275,17 +377,17 @@ impl Contract {
                 // Convert the signed transaction to base64 string
                 let tx_bytes_b64 = base64::encode(signed_tx_bytes);
 
-                // Call rlp_execute on the wallet contract
+                // Call rlp_execute on the wallet contract with the correct target
                 Promise::new(wallet_account_id.clone()).function_call(
                     "rlp_execute".to_string(),
                     near_sdk::serde_json::json!({
-                        "target": target_contract_id,
+                        "target": target_account_id,
                         "tx_bytes_b64": tx_bytes_b64,
                     })
                     .to_string()
                     .into_bytes(),
-                    NearToken::from_yoctonear(0),
-                    Gas::from_tgas(180),
+                    deposit,
+                    Gas::from_tgas(210),
                 )
             }
             Err(_e) => {

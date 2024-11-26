@@ -14,8 +14,9 @@ export const PERFORM_ACTIONS = false;
 export const SHOULD_ACTIVATE = true;
 export const SHOULD_ADD_SESSION_KEY = true;
 
-export const EXISTING_PATH = "12345";
-export const EXISTING_CONTRACT_ID = "1732576013247-fastauth.testnet";
+export const EXISTING_PATH = "MPC_PATH";
+export const EXISTING_APP_ID = "APP_ID";
+export const EXISTING_CONTRACT_ID = "1732654372972-fastauth.testnet";
 
 export const config = {
   networkId: "testnet",

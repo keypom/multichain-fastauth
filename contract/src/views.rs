@@ -11,4 +11,12 @@ impl Contract {
     pub fn get_bundle(&self, path: MpcPath) -> Option<Bundle> {
         self.bundler.get(&path).cloned()
     }
+
+    /// View function to get a user's app balance
+    pub fn get_app_balance(&self, app_id: AppID) -> NearToken {
+        self.app_balances
+            .get(&app_id)
+            .cloned()
+            .unwrap_or(NearToken::from_yoctonear(0))
+    }
 }

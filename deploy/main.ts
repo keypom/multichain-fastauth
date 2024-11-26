@@ -5,27 +5,42 @@ import { callFunction, initNear } from "./utils/nearUtils";
 import {
   config,
   DEPLOY_CONTRACT,
+  EXISTING_APP_ID,
   EXISTING_CONTRACT_ID,
   EXISTING_PATH,
   PERFORM_ACTIONS,
   SHOULD_ACTIVATE,
   SHOULD_ADD_SESSION_KEY,
 } from "./config";
-import { KeyPair } from "@near-js/crypto";
+import { KeyPair, PublicKey } from "@near-js/crypto";
 import { parseNearAmount } from "@near-js/utils";
 
 import bs58 from "bs58";
 import { ethers } from "ethers";
 import { updateConfigFile } from "./utils/files";
+import { Account } from "@near-js/accounts";
 
 interface NearPayload {
-  contract_id: string;
-  method_name: string;
-  args: number[];
-  gas: string;
-  deposit: string;
+  action: NearAction;
   nonce: string;
 }
+
+type NearAction =
+  | {
+      FunctionCall: {
+        contract_id: string;
+        method_name: string;
+        args: number[];
+        gas: string;
+        deposit: string;
+      };
+    }
+  | {
+      Transfer: {
+        receiver_id: string;
+        amount: string;
+      };
+    };
 
 const doesExist = async (near: any, accountId: string) => {
   try {
@@ -93,8 +108,6 @@ async function main() {
       throw new Error("Expected secp256k1 key");
     }
     const keyData = bs58.decode(keyDataBase58); // Key data
-    console.log("Key data length:", keyData.length);
-    console.log("Key data (hex):", Buffer.from(keyData).toString("hex"));
 
     if (keyData.length === 64) {
       // Uncompressed public key without prefix byte
@@ -150,6 +163,7 @@ async function main() {
       args: {
         path,
         public_key: publicKey.toString(),
+        app_id: EXISTING_APP_ID,
       },
       gas: BigInt("300000000000000"),
       attachedDeposit: BigInt(parseNearAmount("0.1")!),
@@ -161,14 +175,38 @@ async function main() {
     throw new Error(`Account ${ethImplicitAccountId} does not exist`);
   }
 
-  // Step 3 is to request a signature
+  // Test Function Call
+  await testFunctionCall(
+    oracleAccount,
+    contractId,
+    ethImplicitAccountId,
+    sessionKeyPair,
+    publicKey,
+  );
+
+  // Test Transfer
+  await testTransfer(
+    oracleAccount,
+    contractId,
+    ethImplicitAccountId,
+    sessionKeyPair,
+    publicKey,
+  );
+}
+
+async function testFunctionCall(
+  oracleAccount: Account,
+  contractId: string,
+  ethImplicitAccountId: string,
+  sessionKeyPair: KeyPair,
+  publicKey: PublicKey,
+) {
   const actionToPerform = {
     targetContractId: "guestbook.near-examples.testnet",
     methodName: "add_message",
     args: { text: "Hello from the Eth Implicit Account!" },
     attachedDepositNear: "0",
     gas: "100000000000000",
-    chain: "NEAR",
   };
 
   const argsSerialized = JSON.stringify(actionToPerform.args);
@@ -183,12 +221,16 @@ async function main() {
   console.log("Nonce: ", nonce);
 
   const nearPayload: NearPayload = {
-    contract_id: actionToPerform.targetContractId,
-    method_name: actionToPerform.methodName,
-    args: argsArray,
-    gas: actionToPerform.gas,
-    deposit: parseNearAmount(actionToPerform.attachedDepositNear)!,
-    nonce,
+    action: {
+      FunctionCall: {
+        contract_id: actionToPerform.targetContractId,
+        method_name: actionToPerform.methodName,
+        args: argsArray,
+        gas: actionToPerform.gas,
+        deposit: parseNearAmount(actionToPerform.attachedDepositNear)!,
+      },
+    },
+    nonce: nonce.toString(),
   };
 
   const payloadJson = JSON.stringify(nearPayload);
@@ -202,11 +244,62 @@ async function main() {
   await callFunction({
     signerAccount: oracleAccount,
     contractId,
-    methodName: "call_near_contract",
+    methodName: "execute_near_action",
     args: {
       signature: signatureBase64,
       payload: nearPayload,
       session_key: publicKey.toString(),
+      app_id: EXISTING_APP_ID,
+    },
+    gas: BigInt("300000000000000"),
+    attachedDeposit: BigInt(0),
+  });
+}
+
+async function testTransfer(
+  oracleAccount: Account,
+  contractId: string,
+  ethImplicitAccountId: string,
+  sessionKeyPair: KeyPair,
+  publicKey: PublicKey,
+) {
+  const receiverId = "some-account.testnet";
+  const amountNear = "0.1";
+
+  const nonce = await oracleAccount.viewFunction({
+    contractId: ethImplicitAccountId,
+    methodName: "get_nonce",
+    args: {},
+  });
+  console.log("Nonce: ", nonce);
+
+  const nearPayload: NearPayload = {
+    action: {
+      Transfer: {
+        receiver_id: receiverId,
+        amount: parseNearAmount(amountNear)!,
+      },
+    },
+    nonce: nonce.toString(),
+  };
+
+  const payloadJson = JSON.stringify(nearPayload);
+  const payloadBytes = Buffer.from(payloadJson);
+
+  const signatureObj = sessionKeyPair.sign(payloadBytes);
+  const signatureBase64 = Buffer.from(signatureObj.signature).toString(
+    "base64",
+  );
+
+  await callFunction({
+    signerAccount: oracleAccount,
+    contractId,
+    methodName: "execute_near_action",
+    args: {
+      signature: signatureBase64,
+      payload: nearPayload,
+      session_key: publicKey.toString(),
+      app_id: EXISTING_APP_ID,
     },
     gas: BigInt("300000000000000"),
     attachedDeposit: BigInt(0),

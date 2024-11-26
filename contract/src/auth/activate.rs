@@ -26,7 +26,7 @@ impl Contract {
         let eth_implicit_account = eth_address.clone();
 
         // Activate the new sub-account
-        Promise::new(eth_implicit_account.clone()).transfer(NearToken::from_millinear(100)); // Attach 0.1 NEAR for account creation
+        Promise::new(eth_implicit_account.clone()).transfer(NearToken::from_millinear(10)); // Attach 0.01 NEAR for account creation
 
         self.bundler.flush();
         // Adjust the deposit based on storage usage

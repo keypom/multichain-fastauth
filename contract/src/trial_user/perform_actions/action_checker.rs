@@ -26,7 +26,20 @@ impl Contract {
         payload: &NearPayload,
         signature: &Base64VecU8,
         session_key: &PublicKey,
+        app_id: &AppID,
     ) {
+        // Retrieve KeyUsage using session_key
+        let key_usage = self
+            .key_usage_by_pk
+            .get(session_key)
+            .expect("Public key not recognized");
+
+        // Verify app_id
+        require!(
+            key_usage.app_id == *app_id,
+            "Session key not associated with this app"
+        );
+
         // Serialize the payload
         let payload_bytes =
             near_sdk::serde_json::to_vec(&payload).expect("Failed to serialize payload");
