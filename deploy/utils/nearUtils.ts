@@ -50,7 +50,7 @@ async function retryAsync<T>(
 export async function initNear(config: any): Promise<Near> {
   const nearConfig = {
     networkId: config.networkId,
-    nodeUrl: `https://g.w.lavanet.xyz:443/gateway/neart/rpc-http/f653c33afd2ea30614f69bc1c73d4940`,
+    nodeUrl: `https://test.rpc.fastnear.com`,
     keyStore: config.keyStore,
   };
   const near = new Near(nearConfig);

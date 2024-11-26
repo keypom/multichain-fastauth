@@ -7,6 +7,7 @@ import {
   DEPLOY_CONTRACT,
   EXISTING_CONTRACT_ID,
   EXISTING_PATH,
+  PERFORM_ACTIONS,
   SHOULD_ACTIVATE,
   SHOULD_ADD_SESSION_KEY,
 } from "./config";
@@ -68,6 +69,10 @@ async function main() {
     );
 
     updateConfigFile(contractId);
+  }
+
+  if (!PERFORM_ACTIONS) {
+    return;
   }
 
   const path = EXISTING_PATH;
